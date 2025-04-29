@@ -73,9 +73,6 @@ def parse_args():
         help='Frequency (in batches) for printing training progress. Default: 100.'
     )
 
-    parser.add_argument("--world-size", default=1, type=int, help="Number of distributed processes")
-    parser.add_argument('--local-rank', type=int, default=0, help='Local rank for distributed training')
-
     # Output path
     parser.add_argument(
         '--save-path',

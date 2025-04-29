@@ -15,16 +15,9 @@ def load_filtered_state_dict(model, state_dict):
     model.load_state_dict(current_model_dict)
 
 
-def _make_divisible(v: float, divisor: int, min_value: Optional[int] = None) -> int:
-    """
-    This function is taken from the original tf repo.
-    It ensures that all layers have a channel number that is divisible by 8
-    It can be seen here:
-    https://github.com/tensorflow/models/blob/master/research/slim/nets/mobilenet/mobilenet.py
-    """
-    if min_value is None:
-        min_value = divisor
-    new_v = max(min_value, int(v + divisor / 2) // divisor * divisor)
+def _make_divisible(v: float, divisor: int = 8) -> int:
+    """This function ensures that all layers have a channel number divisible by 8"""
+    new_v = max(divisor, int(v + divisor / 2) // divisor * divisor)
     # Make sure that round down does not go down by more than 10%.
     if new_v < 0.9 * v:
         new_v += divisor
@@ -42,7 +35,6 @@ class Conv2dNormActivation(torch.nn.Sequential):
             stride: int = 1,
             padding: Optional = None,
             groups: int = 1,
-            norm_layer: Optional[Callable[..., nn.Module]] = None,
             activation_layer: Optional[Callable[..., torch.nn.Module]] = torch.nn.ReLU,
             dilation: int = 1,
             inplace: Optional[bool] = True,
@@ -65,9 +57,6 @@ class Conv2dNormActivation(torch.nn.Sequential):
             ),
             nn.BatchNorm2d(num_features=out_channels, eps=0.001, momentum=0.01)
         ]
-        
-        if norm_layer is not None:
-            layers.append(norm_layer(out_channels))
 
         if activation_layer is not None:
             params = {} if inplace is None else {"inplace": inplace}

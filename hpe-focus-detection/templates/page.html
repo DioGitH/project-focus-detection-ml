@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video with Axis</title>
+</head>
+
+<body>
+    <h1>Video Stream with Axis</h1>
+    <video id="video" autoplay playsinline style="width: 100%; max-width: 600px; border: 1px solid black;"></video>
+    <img id="processedFrame" style="width: 100%; max-width: 600px; border: 1px solid black;" alt="Processed Frame">
+    <button id="startButton">Start Camera</button>
+    <button id="stopButton">Stop Camera</button>
+
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script>
+        const video = document.getElementById("video");
+        const processedFrame = document.getElementById("processedFrame");
+        const startButton = document.getElementById("startButton");
+        const stopButton = document.getElementById("stopButton");
+        const anglesDisplay = document.createElement("p"); // Elemen untuk menampilkan angles
+        document.body.appendChild(anglesDisplay); // Tambahkan ke body
+        let stream = null;
+        let socket = null;
+        let intervalId = null;
+
+        startButton.addEventListener("click", async () => {
+            try {
+                // Hubungkan ke WebSocket
+                socket = io.connect("http://127.0.0.1:5000");
+
+                socket.on("receive_frame", (data) => {
+                    // Tampilkan frame yang sudah diproses
+                    processedFrame.src = data.frame;
+
+                    // Tampilkan angles (yaw, pitch, roll)
+                    const { yaw, pitch, roll } = data.angles;
+                    anglesDisplay.textContent = `Yaw: ${yaw.toFixed(2)}, Pitch: ${pitch.toFixed(2)}, Roll: ${roll.toFixed(2)}`;
+                });
+
+                // Akses kamera
+                stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                video.srcObject = stream;
+
+                // Kirim frame ke backend setiap 100 ms
+                intervalId = setInterval(() => {
+                    const canvas = document.createElement("canvas");
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    const ctx = canvas.getContext("2d");
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+                    // Konversi frame ke Base64
+                    const frameData = canvas.toDataURL("image/jpeg");
+
+                    // Kirim frame ke backend
+                    socket.emit("send_frame", { frame: frameData });
+                }, 250); // Kirim setiap 100 ms
+            } catch (err) {
+                console.error("Error accessing the camera: ", err);
+                alert("Unable to access the camera. Please check your permissions.");
+            }
+        });
+
+        stopButton.addEventListener("click", () => {
+            if (stream) {
+                const tracks = stream.getTracks();
+                tracks.forEach((track) => track.stop());
+                video.srcObject = null;
+                clearInterval(intervalId);
+                if (socket) {
+                    socket.disconnect();
+                }
+            }
+        });
+    </script>
+</body>
+
+</html>
