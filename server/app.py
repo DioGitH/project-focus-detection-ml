@@ -26,7 +26,7 @@ except Exception as e:
     
 try:
     head_pose = mobilenet_v2(num_classes=6, pretrained=False)
-    state_dict = torch.load("./weights/hpe.pt", map_location=device)
+    state_dict = torch.load("./weights/hpe_mobilenetv2.pt", map_location=device)
     head_pose.load_state_dict(state_dict)
     logging.info("Head Pose Estimation model weights loaded.")
 except Exception as e:
