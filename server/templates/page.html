@@ -57,7 +57,7 @@
 
                     // Kirim frame ke backend
                     socket.emit("send_frame", { frame: frameData });
-                }, 250); // Kirim setiap 100 ms
+                }, 1000); // Kirim setiap 100 ms
             } catch (err) {
                 console.error("Error accessing the camera: ", err);
                 alert("Unable to access the camera. Please check your permissions.");
