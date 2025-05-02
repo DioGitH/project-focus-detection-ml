@@ -7,6 +7,7 @@ export default function VideoStream() {
     const processedFrameRef = useRef<HTMLImageElement | null>(null);
     const [angles, setAngles] = useState({ yaw: 0, pitch: 0, roll: 0 });
     const [stream, setStream] = useState<MediaStream | null>(null);
+    const [focus, setFocus] = useState(false);
     const socketRef = useRef<Socket | null>(null);
     const captureIntervalRef = useRef<NodeJS.Timeout | null>(null);
     const FPS = 30;
@@ -34,10 +35,15 @@ export default function VideoStream() {
                 processedFrameRef.current.src = data.frame;
             }
             setAngles(data.angles);
+            setFocus(data.focused);
         });
 
         socketRef.current.on('error', (error) => {
             console.error('Socket error:', error);
+        });
+
+        socketRef.current.on("not_focused_warning", (data) => {
+            alert(data.message);
         });
 
         // Clean up on component unmount
@@ -129,7 +135,7 @@ export default function VideoStream() {
     return (
         <div className="flex flex-col items-center justify-center min-h-screen p-8 pb-20 gap-8 sm:p-20 bg-gray-100 font-sans">
             <h1 className="text-3xl font-bold text-gray-800">Video Stream with Axis</h1>
-            <div className="flex flex-col items-center gap-4">
+            <div className="flex flex-nowrap items-center gap-4">
                 <video
                     ref={videoRef}
                     autoPlay
@@ -143,9 +149,17 @@ export default function VideoStream() {
                 />
             </div>
             <p className="text-lg text-gray-700">
-                <span className="font-semibold">Yaw:</span> {angles.yaw.toFixed(2)},{" "}
-                <span className="font-semibold">Pitch:</span> {angles.pitch.toFixed(2)},{" "}
-                <span className="font-semibold">Roll:</span> {angles.roll.toFixed(2)}
+                <span className={`font-semibold ${Math.abs(angles.yaw) > 15 ? 'text-red-500' : ''}`}>
+                    Yaw:
+                </span> {angles.yaw.toFixed(2)},{" "}
+
+                <span className={`font-semibold ${Math.abs(angles.pitch) > 15 ? 'text-red-500' : ''}`}>
+                    Pitch:
+                </span> {angles.pitch.toFixed(2)},{" "}
+
+                <span className={`font-semibold ${Math.abs(angles.roll) > 15 ? 'text-red-500' : ''}`}>
+                    Roll:
+                </span> {angles.roll.toFixed(2)}
             </p>
             <div className="flex gap-4">
                 <button
@@ -164,6 +178,9 @@ export default function VideoStream() {
             </div>
             <div className="text-sm text-gray-500">
                 Connection Status: {isConnected ? 'Connected' : 'Disconnected'}
+            </div>
+            <div className="text-sm text-gray-500">
+                Focus: {focus ? 'Focus' : 'Indicates Not Focused'}
             </div>
         </div>
     );

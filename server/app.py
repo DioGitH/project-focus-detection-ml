@@ -2,6 +2,7 @@ from flask import Flask, request
 from flask_socketio import SocketIO, emit, disconnect
 import cv2
 import numpy as np
+import time
 import torch
 from models.scrfd import SCRFD
 from models.mobilenetv2 import mobilenet_v2
@@ -66,6 +67,8 @@ def handle_stop_camera(data):
 
 @socketio.on("send_frame")
 def process_frame(data):
+    global focus_start_time
+    
     try:
         # Check if the frame data exists
         if not data or "frame" not in data:
@@ -138,6 +141,16 @@ def process_frame(data):
             size_ratio=0.5
         )
         
+        is_focused = -15 <= y_pred_deg.item() <= 15 and -15 <= p_pred_deg.item() <= 15 and -15 <= r_pred_deg.item() <= 15
+
+        if not is_focused:
+            if focus_start_time is None:
+                focus_start_time = time.time()
+            elif time.time() - focus_start_time >= 10:
+                emit("not_focused_warning", {"message": "User has been unfocused for more than 10 seconds!"})
+        else:
+            focus_start_time = None  # reset jika kembali fokus
+        
         # Prepare angles to return
         angles = {
             "yaw": y_pred_deg.item(),
@@ -154,7 +167,8 @@ def process_frame(data):
         # Combine the angles and the frame in the response
         response = {
             "angles": angles,
-            "frame": frame_base64
+            "frame": frame_base64,
+            "focused": is_focused,
         }
         
         # Emit the processed frame
