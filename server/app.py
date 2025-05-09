@@ -1,9 +1,13 @@
+import eventlet
+
 from flask import Flask, request
 from flask_socketio import SocketIO, emit, disconnect
+
 import cv2
 import numpy as np
 import time
 import torch
+
 from models.scrfd import SCRFD
 from models.mobilenetv2 import mobilenet_v2
 import base64

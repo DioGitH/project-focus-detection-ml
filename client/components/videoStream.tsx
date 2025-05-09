@@ -10,12 +10,12 @@ export default function VideoStream() {
     const [focus, setFocus] = useState(false);
     const socketRef = useRef<Socket | null>(null);
     const captureIntervalRef = useRef<NodeJS.Timeout | null>(null);
-    const FPS = 30;
+    const FPS = 50;
     const [isConnected, setIsConnected] = useState(false);
 
     useEffect(() => {
         // Initialize socket connection
-        socketRef.current = io('http://192.168.1.25:5000', {
+        socketRef.current = io('localhost:5000', {
             transports: ['websocket'],
         });
 
@@ -55,16 +55,32 @@ export default function VideoStream() {
         };
     }, []);
 
-    const capture = (videoElement: HTMLVideoElement, scale: number = 1) => {
+    // const capture = (videoElement: HTMLVideoElement, scale: number = 1) => {
+    //     const canvas = document.createElement('canvas');
+    //     const ctx = canvas.getContext('2d');
+    //     if (ctx) {
+    //         canvas.width = videoElement.videoWidth * scale;
+    //         canvas.height = videoElement.videoHeight * scale;
+    //         ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+    //     }
+    //     return canvas;
+    // };
+
+    const capture = (videoElement: HTMLVideoElement) => {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
+
+        const targetSize = 224;
+        canvas.width = targetSize;
+        canvas.height = targetSize;
+
         if (ctx) {
-            canvas.width = videoElement.videoWidth * scale;
-            canvas.height = videoElement.videoHeight * scale;
-            ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+            ctx.drawImage(videoElement, 0, 0, targetSize, targetSize);
         }
+
         return canvas;
     };
+
 
     const startCamera = async () => {
         try {
@@ -85,8 +101,8 @@ export default function VideoStream() {
                 if (!videoRef.current || !socketRef.current?.connected) return;
 
                 // Capture frame from the video element
-                const frame = capture(videoRef.current, 1);
-                const frameData = frame.toDataURL('image/jpeg');
+                const frame = capture(videoRef.current);
+                const frameData = frame.toDataURL('image/jpeg', 0.6);
 
                 // Send the captured frame to the server
                 socketRef.current?.emit('send_frame', { frame: frameData });
@@ -134,7 +150,7 @@ export default function VideoStream() {
 
     return (
         <div className="flex flex-col items-center justify-center min-h-screen p-8 pb-20 gap-8 sm:p-20 bg-gray-100 font-sans">
-            <h1 className="text-3xl font-bold text-gray-800">Video Stream with Axis</h1>
+            <h1 className="text-3xl font-bold text-gray-800">Focus Detection</h1>
             <div className="flex flex-nowrap items-center gap-4">
                 <video
                     ref={videoRef}
@@ -144,6 +160,7 @@ export default function VideoStream() {
                 />
                 <img
                     ref={processedFrameRef}
+                    src="./profile.jpg"
                     className="w-full max-w-lg rounded-lg shadow-lg border border-gray-300"
                     alt="Processed Frame"
                 />
