@@ -25,6 +25,7 @@ socketio = SocketIO(app, cors_allowed_origins="*", ping_timeout=60, ping_interva
 
 # Track active clients
 active_clients = set()
+focus_start_times = {}
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 logger.info(f"Using device: {device}")
@@ -61,6 +62,9 @@ def handle_disconnect():
     client_id = request.sid
     if client_id in active_clients:
         active_clients.remove(client_id)
+        
+    if client_id in focus_start_times:
+        del focus_start_times[client_id]
     logger.info(f"Client disconnected: {client_id}. Total clients: {len(active_clients)}")
 
 @socketio.on("stop_camera")
@@ -71,7 +75,10 @@ def handle_stop_camera(data):
 
 @socketio.on("send_frame")
 def process_frame(data):
-    global focus_start_time
+    client_id = request.sid
+    if client_id not in focus_start_times:
+        focus_start_times[client_id] = None
+
     
     try:
         # Check if the frame data exists
@@ -148,12 +155,15 @@ def process_frame(data):
         is_focused = -15 <= y_pred_deg.item() <= 15 and -15 <= p_pred_deg.item() <= 15 and -15 <= r_pred_deg.item() <= 15
 
         if not is_focused:
-            if focus_start_time is None:
-                focus_start_time = time.time()
-            elif time.time() - focus_start_time >= 10:
-                emit("not_focused_warning", {"message": "User has been unfocused for more than 10 seconds!"})
+            if focus_start_times[client_id] is None:
+                focus_start_times[client_id] = time.time()
+            elif time.time() - focus_start_times[client_id] >= 10:
+                emit("not_focused_warning", {
+                    "message": "User has been unfocused for more than 10 seconds!"
+                }, to=client_id)
         else:
-            focus_start_time = None  # reset jika kembali fokus
+            focus_start_times[client_id] = None  # Reset jika kembali fokus
+
         
         # Prepare angles to return
         angles = {
