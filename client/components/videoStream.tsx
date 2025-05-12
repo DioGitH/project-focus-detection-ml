@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
+import { UsernameForm } from './username-form';
 
 export default function VideoStream() {
     const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -12,25 +13,25 @@ export default function VideoStream() {
     const captureIntervalRef = useRef<NodeJS.Timeout | null>(null);
     const FPS = 50;
     const [isConnected, setIsConnected] = useState(false);
+    const [username, setUsername] = useState<string>("");
 
-    useEffect(() => {
-        // Initialize socket connection
-        socketRef.current = io('localhost:5000', {
+    function socketUsersClient(){
+        const socket = io(process.env.NEXT_PUBLIC_SOCKET_URL, {
             transports: ['websocket'],
         });
 
         // Set up socket event handlers
-        socketRef.current.on('connect', () => {
+        socket.on('connect', () => {
             console.log('Socket connected');
             setIsConnected(true);
         });
 
-        socketRef.current.on('disconnect', () => {
+        socket.on('disconnect', () => {
             console.log('Socket disconnected');
             setIsConnected(false);
         });
 
-        socketRef.current.on('receive_frame', (data) => {
+        socket.on('receive_frame', (data) => {
             if (processedFrameRef.current) {
                 processedFrameRef.current.src = data.frame;
             }
@@ -38,44 +39,35 @@ export default function VideoStream() {
             setFocus(data.focused);
         });
 
-        socketRef.current.on('error', (error) => {
+        socket.on('error', (error) => {
             console.error('Socket error:', error);
         });
 
-        socketRef.current.on("not_focused_warning", (data) => {
+        socket.on("not_focused_warning", (data) => {
             alert(data.message);
         });
 
-        // Clean up on component unmount
+        socketRef.current = socket;
+    };
+
+    useEffect(() => {
+        socketUsersClient();
         return () => {
             stopCamera();
-            if (socketRef.current) {
-                socketRef.current.disconnect();
-            }
+            socketRef?.current?.disconnect();
         };
     }, []);
-
-    // const capture = (videoElement: HTMLVideoElement, scale: number = 1) => {
-    //     const canvas = document.createElement('canvas');
-    //     const ctx = canvas.getContext('2d');
-    //     if (ctx) {
-    //         canvas.width = videoElement.videoWidth * scale;
-    //         canvas.height = videoElement.videoHeight * scale;
-    //         ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
-    //     }
-    //     return canvas;
-    // };
 
     const capture = (videoElement: HTMLVideoElement) => {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
 
-        const targetSize = 224;
-        canvas.width = targetSize;
-        canvas.height = targetSize;
+        // const targetSize = 224;
+        canvas.width = 240;
+        canvas.height = 180;
 
         if (ctx) {
-            ctx.drawImage(videoElement, 0, 0, targetSize, targetSize);
+            ctx.drawImage(videoElement, 0, 0, 240, 180);
         }
 
         return canvas;
@@ -88,6 +80,8 @@ export default function VideoStream() {
             if (!socketRef.current?.connected) {
                 socketRef.current?.connect();
             }
+
+            socketRef.current?.emit('register_username', { username: username });
 
             const mediaStream = await navigator.mediaDevices.getUserMedia({ video: true });
             setStream(mediaStream);
@@ -149,56 +143,63 @@ export default function VideoStream() {
     };
 
     return (
-        <div className="flex flex-col items-center justify-center min-h-screen p-8 pb-20 gap-8 sm:p-20 bg-gray-100 font-sans">
-            <h1 className="text-3xl font-bold text-gray-800">Focus Detection</h1>
-            <div className="flex flex-nowrap items-center gap-4">
-                <video
-                    ref={videoRef}
-                    autoPlay
-                    playsInline
-                    className="w-full max-w-lg rounded-lg shadow-lg border border-gray-300"
-                />
-                <img
-                    ref={processedFrameRef}
-                    src="./profile.jpg"
-                    className="w-full max-w-lg rounded-lg shadow-lg border border-gray-300"
-                    alt="Processed Frame"
-                />
-            </div>
-            <p className="text-lg text-gray-700">
-                <span className={`font-semibold ${Math.abs(angles.yaw) > 15 ? 'text-red-500' : ''}`}>
-                    Yaw:
-                </span> {angles.yaw.toFixed(2)},{" "}
+        <div className="flex flex-col items-center justify-center  min-h-screen gap-5 font-sans">
+            <h1 className="text-3xl font-bold">Focus Detection</h1>
+            {!username ? (
+                <UsernameForm setUsername={setUsername} />
+            ) : (
+                <>
+                    <p className="mt-4">Username: {username}</p>
+                    <div className="flex flex-nowrap items-center gap-4">
+                        <video
+                            ref={videoRef}
+                            autoPlay
+                            playsInline
+                            className="w-52 h-32 rounded-lg shadow-lg border border-gray-300 object-cover"
+                        />
+                        <img
+                            ref={processedFrameRef}
+                            src="./profile.jpg"
+                            className="w-52 h-32 rounded-lg shadow-lg border border-gray-300 object-cover"
+                            alt="Processed Frame"
+                        />
+                    </div>
+                    <p className="text-lg">
+                        <span className={`font-semibold ${Math.abs(angles.yaw) > 15 ? 'text-red-500' : ''}`}>
+                            Yaw:
+                        </span> {angles.yaw.toFixed(2)},{" "}
 
-                <span className={`font-semibold ${Math.abs(angles.pitch) > 15 ? 'text-red-500' : ''}`}>
-                    Pitch:
-                </span> {angles.pitch.toFixed(2)},{" "}
+                        <span className={`font-semibold ${Math.abs(angles.pitch) > 15 ? 'text-red-500' : ''}`}>
+                            Pitch:
+                        </span> {angles.pitch.toFixed(2)},{" "}
 
-                <span className={`font-semibold ${Math.abs(angles.roll) > 15 ? 'text-red-500' : ''}`}>
-                    Roll:
-                </span> {angles.roll.toFixed(2)}
-            </p>
-            <div className="flex gap-4">
-                <button
-                    onClick={startCamera}
-                    className="px-6 py-2 bg-blue-500 text-white rounded-lg shadow hover:bg-blue-600 transition"
-                    disabled={!isConnected}
-                >
-                    Start Camera
-                </button>
-                <button
-                    onClick={stopCamera}
-                    className="px-6 py-2 bg-red-500 text-white rounded-lg shadow hover:bg-red-600 transition"
-                >
-                    Stop Camera
-                </button>
-            </div>
-            <div className="text-sm text-gray-500">
-                Connection Status: {isConnected ? 'Connected' : 'Disconnected'}
-            </div>
-            <div className="text-sm text-gray-500">
-                Focus: {focus ? 'Focus' : 'Indicates Not Focused'}
-            </div>
+                        <span className={`font-semibold ${Math.abs(angles.roll) > 15 ? 'text-red-500' : ''}`}>
+                            Roll:
+                        </span> {angles.roll.toFixed(2)}
+                    </p>
+                    <div className="flex gap-4">
+                        <button
+                            onClick={startCamera}
+                            className="px-6 py-2 bg-blue-500 text-white rounded-lg shadow hover:bg-blue-600 transition"
+                            disabled={!isConnected}
+                        >
+                            Start Session
+                        </button>
+                        <button
+                            onClick={stopCamera}
+                            className="px-6 py-2 bg-red-500 text-white rounded-lg shadow hover:bg-red-600 transition"
+                        >
+                            Stop Session
+                        </button>
+                    </div>
+                    <div className="text-sm">
+                        Connection Status: {isConnected ? 'Connected' : 'Disconnected'}
+                    </div>
+                    <div className="text-sm">
+                        Focus: {focus ? 'Focus' : 'Indicates Not Focused'}
+                    </div>
+                </>
+            )}
         </div>
     );
 }

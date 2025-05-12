@@ -1,4 +1,5 @@
 import eventlet
+import eventlet.wsgi
 
 from flask import Flask, request
 from flask_socketio import SocketIO, emit, disconnect
@@ -13,6 +14,8 @@ from models.mobilenetv2 import mobilenet_v2
 import base64
 import logging
 from utils.general import compute_euler_angles_from_rotation_matrices, draw_axis, pre_process, expand_bbox
+from utils.session import start_session, update_unfocused, log_unfocused_recovery, end_session, get_session_data
+
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, 
@@ -26,6 +29,10 @@ socketio = SocketIO(app, cors_allowed_origins="*", ping_timeout=60, ping_interva
 # Track active clients
 active_clients = set()
 focus_start_times = {}
+admin_clients =set()
+usernames = {}
+focus_warnings={}
+
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 logger.info(f"Using device: {device}")
@@ -60,12 +67,23 @@ def handle_connect():
 @socketio.on('disconnect')
 def handle_disconnect():
     client_id = request.sid
-    if client_id in active_clients:
-        active_clients.remove(client_id)
-        
-    if client_id in focus_start_times:
-        del focus_start_times[client_id]
+    user = usernames.get(client_id)
+    
+    summary = end_session(client_id, username=user)
+    print(f"Session summary for {client_id}: {summary}")
+
+    active_clients.discard(client_id)          
+    admin_clients.discard(client_id)           
+    focus_start_times.pop(client_id, None)    
+    usernames.pop(client_id, None) 
+    
+    for admin_id in admin_clients:
+        emit("user_disconnected", {
+            "client_id": client_id
+        }, to=admin_id)
+
     logger.info(f"Client disconnected: {client_id}. Total clients: {len(active_clients)}")
+
 
 @socketio.on("stop_camera")
 def handle_stop_camera(data):
@@ -78,6 +96,9 @@ def process_frame(data):
     client_id = request.sid
     if client_id not in focus_start_times:
         focus_start_times[client_id] = None
+        
+    if client_id not in focus_warnings:
+        focus_warnings[client_id] = False
 
     
     try:
@@ -157,12 +178,20 @@ def process_frame(data):
         if not is_focused:
             if focus_start_times[client_id] is None:
                 focus_start_times[client_id] = time.time()
+                focus_warnings[client_id] = False
             elif time.time() - focus_start_times[client_id] >= 10:
-                emit("not_focused_warning", {
-                    "message": "User has been unfocused for more than 10 seconds!"
-                }, to=client_id)
+                if not focus_warnings[client_id]:
+                    update_unfocused(client_id)
+                    # Emit warning to the client
+                    emit("not_focused_warning", {
+                        "message": "User has been unfocused for more than 10 seconds!"
+                    }, to=client_id)
+                    focus_warnings[client_id] = True
         else:
-            focus_start_times[client_id] = None  # Reset jika kembali fokus
+            
+            log_unfocused_recovery(client_id)
+            focus_start_times[client_id] = None 
+            focus_warnings[client_id] = False
 
         
         # Prepare angles to return
@@ -188,12 +217,51 @@ def process_frame(data):
         # Emit the processed frame
         emit("receive_frame", response)
         
+        username = usernames.get(client_id, "Unknown")
+        
+        # Emit to all connected admins who requested video
+        for admin_id in admin_clients:
+            emit("receive_all_frame", {
+                "client_id": client_id,
+                "username": username,
+                "frame": frame_base64,
+                "focused": is_focused
+            }, to=admin_id)
+        
     except Exception as e:
         logger.exception("Error while processing frame")
         try:
             emit("error", {"message": str(e)})
         except:
             logger.exception("Failed to emit error message")
+            
+@socketio.on("register_username")
+def handle_register_username(data):
+    client_id = request.sid
+    username = data.get("username")
+    if username:
+        usernames[client_id] = username
+        if client_id not in get_session_data():
+            start_session(client_id)
+        logger.info(f"Username '{username}' set for client {client_id}")
+    else:
+        emit("error", {"message": "Username is required"})
+    
+            
+@socketio.on("request_video_admin")
+def handle_admin_request_video():
+    client_id = request.sid
+    admin_clients.add(client_id)
+    logger.info(f"Admin {client_id} requested video stream.")
+
+@socketio.on("stop_video_admin")
+def handle_admin_stop_video():
+    client_id = request.sid
+    admin_clients.discard(client_id)
+    logger.info(f"Admin {client_id} stopped receiving video.")
+    
+    
+
 
 if __name__ == "__main__":
-    socketio.run(app, debug=True)
+    socketio.run(app, engineio_logger=True)
