@@ -29,6 +29,9 @@ def log_unfocused_recovery(client_id):
         session_data[client_id]["last_unfocused_time"] = None
 
 def end_session(client_id, username):
+    if client_id not in session_data:
+        return {"error": f"No session found for client {client_id}"}
+    
     session_data[client_id]["session_end_time"] = time.time()
     total_time = session_data[client_id]["session_end_time"] - session_data[client_id]["session_start_time"]
     
@@ -41,6 +44,13 @@ def end_session(client_id, username):
     }
     
     return summary
+
+def delete_session(client_id):
+    if client_id in session_data:
+        del session_data[client_id]
+        return {"status": "success"}
+    else:
+        return {"error": f"No session found for client {client_id}"}
 
 def get_session_data():
     return session_data

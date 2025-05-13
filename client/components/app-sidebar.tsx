@@ -31,7 +31,7 @@ const items = [
     // },
     {
         title: "Example Exam",
-        url: "#",
+        url: "/example-quiz",
         icon: Search,
     },
 ]

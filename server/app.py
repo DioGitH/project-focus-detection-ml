@@ -14,7 +14,7 @@ from models.mobilenetv2 import mobilenet_v2
 import base64
 import logging
 from utils.general import compute_euler_angles_from_rotation_matrices, draw_axis, pre_process, expand_bbox
-from utils.session import start_session, update_unfocused, log_unfocused_recovery, end_session, get_session_data
+from utils.session import start_session, update_unfocused, log_unfocused_recovery, end_session, get_session_data, delete_session
 
 
 # Set up logging
@@ -67,6 +67,13 @@ def handle_connect():
 @socketio.on('disconnect')
 def handle_disconnect():
     client_id = request.sid
+    
+    # user = usernames.get(client_id, "Unknown")
+    # summary = end_session(client_id, username=user)
+    # if "error" not in summary:
+    #     print("Summary (from disconnect):", summary)
+    delete_session(client_id)
+    
     active_clients.discard(client_id)          
     admin_clients.discard(client_id)           
     focus_start_times.pop(client_id, None)    
@@ -82,12 +89,12 @@ def handle_disconnect():
 
 @socketio.on("stop_camera")
 def handle_stop_camera(data):
-    logger.info("Camera stop request received")
     client_id = request.sid
     user = usernames.get(client_id, "Unknown")
     summary = end_session(client_id, username=user)
-    print("Summary:", summary)
-    # No need to manually disconnect here, just acknowledge the stop
+    if "error" not in summary:
+        emit("session_summary", summary, to=client_id)
+    logger.info("Camera stop request received")
     return {'status': 'success'}
 
 @socketio.on("send_frame")

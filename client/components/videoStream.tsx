@@ -14,6 +14,8 @@ export default function VideoStream() {
     const FPS = 50;
     const [isConnected, setIsConnected] = useState(false);
     const [username, setUsername] = useState<string>("");
+    const [isStopped, setIsStopped] = useState(false);
+    const [sessionSummary, setSessionSummary] = useState(null);
 
     function socketUsersClient(){
         const socket = io(process.env.NEXT_PUBLIC_SOCKET_URL, {
@@ -45,6 +47,10 @@ export default function VideoStream() {
 
         socket.on("not_focused_warning", (data) => {
             alert(data.message);
+        });
+
+        socket.on('session_summary', (data) => {
+            setSessionSummary(data);
         });
 
         socketRef.current = socket;
@@ -135,11 +141,11 @@ export default function VideoStream() {
             // Send stop event to server before disconnecting
             if (socketRef.current?.connected) {
                 socketRef.current.emit('stop_camera', {}, () => {
-                    // Optional: Only disconnect if needed
-                    // socketRef.current?.disconnect();
+                    // socketRef?.current?.disconnect();
                 });
             }
         }
+        setIsStopped(true);
     };
 
     return (
@@ -178,19 +184,46 @@ export default function VideoStream() {
                         </span> {angles.roll.toFixed(2)}
                     </p>
                     <div className="flex gap-4">
-                        <button
-                            onClick={startCamera}
-                            className="px-6 py-2 bg-blue-500 text-white rounded-lg shadow hover:bg-blue-600 transition"
-                            disabled={!isConnected}
-                        >
-                            Start Session
-                        </button>
-                        <button
-                            onClick={stopCamera}
-                            className="px-6 py-2 bg-red-500 text-white rounded-lg shadow hover:bg-red-600 transition"
-                        >
-                            Stop Session
-                        </button>
+                        {isStopped ? (
+                            <div className="text-green-500 font-semibold">
+                                    {sessionSummary && (
+                                        <div>
+                                            <h3>Session Summary</h3>
+                                            <p>Username: {sessionSummary.username}</p>
+                                            <p>Duration: {Math.round(sessionSummary.duration)} seconds</p>
+                                            <p>Unfocused Count: {sessionSummary.unfocused_count}</p>
+                                            <p>Total Unfocused Time: {Math.round(sessionSummary.total_unfocused_duration)} seconds</p>
+
+                                            <h4>Unfocused Timestamps:</h4>
+                                            <ul>
+                                                {sessionSummary.unfocused_timestamps.map((item, index) => (
+                                                    <li key={index}>
+                                                        Start: {new Date(item.start * 1000).toLocaleTimeString()} |
+                                                        End: {new Date(item.end * 1000).toLocaleTimeString()} |
+                                                        Duration: {Math.round(item.duration)}s
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+                            </div>
+                        ) : (
+                            <>
+                                <button
+                                    onClick={startCamera}
+                                    className="px-6 py-2 bg-blue-500 text-white rounded-lg shadow hover:bg-blue-600 transition"
+                                    disabled={!isConnected}
+                                >
+                                    Start Session
+                                </button>
+                                <button
+                                    onClick={stopCamera}
+                                    className="px-6 py-2 bg-red-500 text-white rounded-lg shadow hover:bg-red-600 transition"
+                                >
+                                    Stop Session
+                                </button>
+                            </>
+                        )}
                     </div>
                     <div className="text-sm">
                         Connection Status: {isConnected ? 'Connected' : 'Disconnected'}
