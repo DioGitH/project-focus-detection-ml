@@ -96,7 +96,33 @@ def handle_stop_camera(data):
         emit("session_summary", summary, to=client_id)
     logger.info("Camera stop request received")
     return {'status': 'success'}
+            
+@socketio.on("register_username")
+def handle_register_username(data):
+    client_id = request.sid
+    username = data.get("username")
+    if username:
+        usernames[client_id] = username
+        if client_id not in get_session_data():
+            start_session(client_id)
+        logger.info(f"Username '{username}' set for client {client_id}")
+    else:
+        emit("error", {"message": "Username is required"})
+    
+            
+@socketio.on("request_video_admin")
+def handle_admin_request_video():
+    client_id = request.sid
+    admin_clients.add(client_id)
+    logger.info(f"Admin {client_id} requested video stream.")
 
+@socketio.on("stop_video_admin")
+def handle_admin_stop_video():
+    client_id = request.sid
+    admin_clients.discard(client_id)
+    logger.info(f"Admin {client_id} stopped receiving video.")
+    
+#for page test camera 
 @socketio.on("send_frame")
 def process_frame(data):
     client_id = request.sid
@@ -241,31 +267,155 @@ def process_frame(data):
         except:
             logger.exception("Failed to emit error message")
             
-@socketio.on("register_username")
-def handle_register_username(data):
+#for real testing camera
+@socketio.on("frame_camera")
+def process_frame_camera(data):
     client_id = request.sid
-    username = data.get("username")
-    if username:
-        usernames[client_id] = username
-        if client_id not in get_session_data():
-            start_session(client_id)
-        logger.info(f"Username '{username}' set for client {client_id}")
-    else:
-        emit("error", {"message": "Username is required"})
-    
-            
-@socketio.on("request_video_admin")
-def handle_admin_request_video():
-    client_id = request.sid
-    admin_clients.add(client_id)
-    logger.info(f"Admin {client_id} requested video stream.")
+    username = usernames.get(client_id, "Unknown")
+    if client_id not in focus_start_times:
+        focus_start_times[client_id] = None
+        
+    if client_id not in focus_warnings:
+        focus_warnings[client_id] = False
 
-@socketio.on("stop_video_admin")
-def handle_admin_stop_video():
-    client_id = request.sid
-    admin_clients.discard(client_id)
-    logger.info(f"Admin {client_id} stopped receiving video.")
     
+    try:
+        # Check if the frame data exists
+        if not data or "frame" not in data:
+            emit("error", {"message": "Invalid frame data"})
+            return
+
+        # Decode Base64 frame
+        frame_data = data["frame"].split(",")[1]
+        frame = np.frombuffer(base64.b64decode(frame_data), np.uint8)
+        frame = cv2.imdecode(frame, cv2.IMREAD_COLOR)
+        
+        if frame is None:
+            emit("error", {"message": "Failed to decode frame"})
+            return
+
+        # Initialize response with default values
+        response = {
+            "focused": False,
+        }
+
+        # Perform face detection
+        bboxes, keypoints = face_detector.detect(frame)
+        
+        # If no faces detected, return the original frame with default angles
+        if len(bboxes) == 0:
+            response["focused"] = "No face detected"
+            emit("receive_status", response)
+            
+            # Emit to all connected admins who requested video
+            for admin_id in admin_clients:
+                _, buffer = cv2.imencode('.jpg', frame)
+                frame_base64 = "data:image/jpeg;base64," + base64.b64encode(buffer).decode('utf-8')
+                emit("receive_all_frame", {
+                    "client_id": client_id,
+                    "username": username,
+                    "frame": frame_base64,
+                    "focused": False
+                }, to=admin_id)
+                
+            return
+            
+        # Process the first detected face
+        bbox, keypoint = bboxes[0], keypoints[0]
+        x_min, y_min, x_max, y_max = map(int, bbox[:4])
+
+        # Expand bounding box
+        x_min, y_min, x_max, y_max = expand_bbox(x_min, y_min, x_max, y_max)
+        
+        # Check if bounding box dimensions are valid
+        if x_min >= x_max or y_min >= y_max or x_min < 0 or y_min < 0 or x_max > frame.shape[1] or y_max > frame.shape[0]:
+            logger.warning(f"Invalid bounding box: {x_min}, {y_min}, {x_max}, {y_max}")
+            response["focused"] = False
+            emit("receive_status", response)
+            
+            # Emit to all connected admins who requested video
+            for admin_id in admin_clients:
+                _, buffer = cv2.imencode('.jpg', frame)
+                frame_base64 = "data:image/jpeg;base64," + base64.b64encode(buffer).decode('utf-8')
+                emit("receive_all_frame", {
+                    "client_id": client_id,
+                    "username": username,
+                    "frame": frame_base64,
+                    "focused": False
+                }, to=admin_id)
+                
+            return
+
+        # Pre-process the cropped image
+        cropped_image = frame[y_min:y_max, x_min:x_max]
+        image = pre_process(cropped_image)
+        image = image.to(device)
+
+        # Perform head pose estimation
+        with torch.no_grad():
+            rotation_matrix = head_pose(image)
+            euler = np.degrees(compute_euler_angles_from_rotation_matrices(rotation_matrix))
+            p_pred_deg = euler[:, 0].cpu()
+            y_pred_deg = euler[:, 1].cpu()
+            r_pred_deg = euler[:, 2].cpu()
+        
+        is_focused = -15 <= y_pred_deg.item() <= 15 and -15 <= p_pred_deg.item() <= 15 and -15 <= r_pred_deg.item() <= 15
+
+        if not is_focused:
+            if focus_start_times[client_id] is None:
+                focus_start_times[client_id] = time.time()
+                focus_warnings[client_id] = False
+            elif time.time() - focus_start_times[client_id] >= 10:
+                if not focus_warnings[client_id]:
+                    update_unfocused(client_id)
+                    # Emit warning to the client
+                    emit("not_focused_warning", {
+                        "message": "User has been unfocused for more than 10 seconds!"
+                    }, to=client_id)
+                    focus_warnings[client_id] = True
+        else:
+            
+            log_unfocused_recovery(client_id)
+            focus_start_times[client_id] = None 
+            focus_warnings[client_id] = False
+
+        # Combine the angles and the frame in the response
+        response = {
+            "focused": is_focused,
+        }
+        
+        # Emit the processed frame
+        emit("receive_status", response)
+        
+        # Emit to all connected admins who requested video
+        for admin_id in admin_clients:
+            
+            # Draw axis on the frame
+            draw_axis(
+                frame,
+                y_pred_deg.item(),
+                p_pred_deg.item(),
+                r_pred_deg.item(),
+                bbox=[x_min, y_min, x_max, y_max],
+                size_ratio=0.5
+            )
+            # Encode the frame back to JPEG format
+            _, buffer = cv2.imencode('.jpg', frame)
+            # Encode the frame to Base64
+            frame_base64 = "data:image/jpeg;base64," + base64.b64encode(buffer).decode('utf-8')
+            emit("receive_all_frame", {
+                "client_id": client_id,
+                "username": username,
+                "frame": frame_base64,
+                "focused": is_focused
+            }, to=admin_id)
+        
+    except Exception as e:
+        logger.exception("Error while processing frame")
+        try:
+            emit("error", {"message": str(e)})
+        except:
+            logger.exception("Failed to emit error message")
     
 
 

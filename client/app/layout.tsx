@@ -4,6 +4,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
 import { ModeToggle } from "@/components/button-darkmode";
 import { AppSidebar } from "@/components/app-sidebar"
 import { ThemeProvider } from "@/components/theme-provider"
+import { Toaster } from "@/components/ui/sonner"
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -37,6 +38,7 @@ export default function RootLayout({
                 {children}
               </main>
             </SidebarProvider>
+            <Toaster richColors expand={true} position="top-center" closeButton/>
           </ThemeProvider>
         </body>
       </html>
