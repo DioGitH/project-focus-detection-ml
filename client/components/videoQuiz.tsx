@@ -8,7 +8,7 @@ export type VideoQuizHandle = {
     stopCamera: () => void;
 };
 
-const VideoQuiz = forwardRef<VideoQuizHandle, { username: string }>(({ username }, ref) => {
+const VideoQuiz = forwardRef<VideoQuizHandle, { username: string; onSummaryReceived?:(summary:any)=>void }>(({ username, onSummaryReceived }, ref, ) => {
     const videoRef = useRef<HTMLVideoElement | null>(null);
     const socketRef = useRef<Socket | null>(null);
     const [isConnected, setIsConnected] = useState(false);
@@ -48,7 +48,7 @@ const VideoQuiz = forwardRef<VideoQuizHandle, { username: string }>(({ username 
         });
 
         socket.on('session_summary', (data) => {
-            console.log('Summary:', data);
+            onSummaryReceived?.(data);
         });
 
         socketRef.current = socket;

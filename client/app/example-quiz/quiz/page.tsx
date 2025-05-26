@@ -4,6 +4,7 @@ import { useUser } from "@/context/quizContext";
 import QuestionCard from "@/components/question-card";
 import { questions } from "@/data/questions";
 import VideoQuiz, { VideoQuizHandle } from "@/components/videoQuiz";
+import ResultPage from "@/components/resultPage";
 
 export default function QuizPage(){
     const { userData } = useUser();
@@ -12,6 +13,9 @@ export default function QuizPage(){
     const videoRef = useRef<VideoQuizHandle>(null);
     const [current, setCurrent] = useState(0);
     const [score, setScore] = useState(0);
+    const [isFinished, setIsFinished] = useState(false);
+    const [summary, setSummary] = useState<any>(null);
+
 
     useEffect(() => {
         videoRef.current?.startCamera();
@@ -31,11 +35,8 @@ export default function QuizPage(){
             setCurrent(current + 1);
         } 
         else {
-            alert(`Quiz selesai! Skor Anda: ${score} dari ${questions.length}`);
-            // Reset quiz
             videoRef.current?.stopCamera();
-            setCurrent(0);
-            setScore(0);
+            setIsFinished(true);
         }
     };
 
@@ -43,16 +44,23 @@ export default function QuizPage(){
         <div className="w-screen flex justify-center">
             <div className="w-[80vw]">
                 <div className="grid grid-cols-5 gap-4 mt-4">
-                    <div className="w-full">
-                        <VideoQuiz username={username} ref={videoRef} />
-                    </div>
-                    <div className="w-full col-span-4">
-                        <h1 className="text-2xl font-bold text-center">
-                            Quiz
-                        </h1>
-                        <h2>Soal {current + 1} dari {questions.length}</h2>
-                        <QuestionCard question={questions[current]} onAnswer={handleAnswer} />
-                    </div>
+                        <div className="w-full">
+                        <VideoQuiz username={username} ref={videoRef} onSummaryReceived={(data: any) => { setSummary(data) }} />
+                        </div>
+                        <div className="w-full col-span-4">
+                            {isFinished ? (
+                                <ResultPage score={score} total={questions.length} summary={summary} name={name}/>
+                            ) : (
+                                <div className="">
+                                    <h1 className="text-2xl font-bold text-center">Quiz</h1>
+                                    <h2>Soal {current + 1} dari {questions.length}</h2>
+                                    <QuestionCard
+                                        question={questions[current]}
+                                        onAnswer={handleAnswer}
+                                    />
+                                </div>
+                            )}
+                        </div>
                 </div>
             </div>
         </div>

@@ -126,296 +126,231 @@ def handle_admin_stop_video():
 @socketio.on("send_frame")
 def process_frame(data):
     client_id = request.sid
-    if client_id not in focus_start_times:
-        focus_start_times[client_id] = None
-        
-    if client_id not in focus_warnings:
-        focus_warnings[client_id] = False
+    username = usernames.get(client_id, "Unknown")
 
-    
-    try:
-        # Check if the frame data exists
-        if not data or "frame" not in data:
-            emit("error", {"message": "Invalid frame data"})
-            return
+    focus_start_times.setdefault(client_id, None)
+    focus_warnings.setdefault(client_id, False)
 
-        # Decode Base64 frame
-        frame_data = data["frame"].split(",")[1]
-        frame = np.frombuffer(base64.b64decode(frame_data), np.uint8)
-        frame = cv2.imdecode(frame, cv2.IMREAD_COLOR)
-        
-        if frame is None:
-            emit("error", {"message": "Failed to decode frame"})
-            return
-
-        # Initialize response with default values
-        response = {
-            "angles": {"yaw": 0, "pitch": 0, "roll": 0},
-            "frame": data["frame"]  # Default to original frame
-        }
-
-        # Perform face detection
-        bboxes, keypoints = face_detector.detect(frame)
-        
-        # If no faces detected, return the original frame with default angles
-        if len(bboxes) == 0:
-            _, buffer = cv2.imencode('.jpg', frame)
-            frame_base64 = "data:image/jpeg;base64," + base64.b64encode(buffer).decode('utf-8')
-            response["frame"] = frame_base64
-            emit("receive_frame", response)
-            return
-            
-        # Process the first detected face
-        bbox, keypoint = bboxes[0], keypoints[0]
-        x_min, y_min, x_max, y_max = map(int, bbox[:4])
-
-        # Expand bounding box
-        x_min, y_min, x_max, y_max = expand_bbox(x_min, y_min, x_max, y_max)
-        
-        # Check if bounding box dimensions are valid
-        if x_min >= x_max or y_min >= y_max or x_min < 0 or y_min < 0 or x_max > frame.shape[1] or y_max > frame.shape[0]:
-            logger.warning(f"Invalid bounding box: {x_min}, {y_min}, {x_max}, {y_max}")
-            # Return original frame with default angles
-            _, buffer = cv2.imencode('.jpg', frame)
-            frame_base64 = "data:image/jpeg;base64," + base64.b64encode(buffer).decode('utf-8')
-            response["frame"] = frame_base64
-            emit("receive_frame", response)
-            return
-
-        # Pre-process the cropped image
-        cropped_image = frame[y_min:y_max, x_min:x_max]
-        image = pre_process(cropped_image)
-        image = image.to(device)
-
-        # Perform head pose estimation
-        with torch.no_grad():
-            rotation_matrix = head_pose(image)
-            euler = np.degrees(compute_euler_angles_from_rotation_matrices(rotation_matrix))
-            p_pred_deg = euler[:, 0].cpu()
-            y_pred_deg = euler[:, 1].cpu()
-            r_pred_deg = euler[:, 2].cpu()
-
-        # Draw axis on the frame
-        draw_axis(
-            frame,
-            y_pred_deg.item(),
-            p_pred_deg.item(),
-            r_pred_deg.item(),
-            bbox=[x_min, y_min, x_max, y_max],
-            size_ratio=0.5
-        )
-        
-        is_focused = -15 <= y_pred_deg.item() <= 15 and -15 <= p_pred_deg.item() <= 15 and -15 <= r_pred_deg.item() <= 15
-
-        if not is_focused:
-            if focus_start_times[client_id] is None:
-                focus_start_times[client_id] = time.time()
-                focus_warnings[client_id] = False
-            elif time.time() - focus_start_times[client_id] >= 10:
-                if not focus_warnings[client_id]:
-                    update_unfocused(client_id)
-                    # Emit warning to the client
-                    emit("not_focused_warning", {
-                        "message": "User has been unfocused for more than 10 seconds!"
-                    }, to=client_id)
-                    focus_warnings[client_id] = True
-        else:
-            
-            log_unfocused_recovery(client_id)
-            focus_start_times[client_id] = None 
-            focus_warnings[client_id] = False
-
-        
-        # Prepare angles to return
-        angles = {
-            "yaw": y_pred_deg.item(),
-            "pitch": p_pred_deg.item(),
-            "roll": r_pred_deg.item()
-        }
-
-        # Encode the frame back to JPEG format
-        _, buffer = cv2.imencode('.jpg', frame)
-        
-        # Encode the frame to Base64
-        frame_base64 = "data:image/jpeg;base64," + base64.b64encode(buffer).decode('utf-8')
-
-        # Combine the angles and the frame in the response
-        response = {
-            "angles": angles,
-            "frame": frame_base64,
-            "focused": is_focused,
-        }
-        
-        # Emit the processed frame
-        emit("receive_frame", response)
-        
-        username = usernames.get(client_id, "Unknown")
-        
-        # Emit to all connected admins who requested video
+    def emit_frame_to_admins(focused, frame_base64):
         for admin_id in admin_clients:
             emit("receive_all_frame", {
                 "client_id": client_id,
                 "username": username,
                 "frame": frame_base64,
-                "focused": is_focused
+                "focused": focused
             }, to=admin_id)
-        
+
+    def handle_unfocused(reason):
+        now = time.time()
+        if focus_start_times[client_id] is None:
+            focus_start_times[client_id] = now
+            focus_warnings[client_id] = False
+        elif now - focus_start_times[client_id] >= 10 and not focus_warnings[client_id]:
+            update_unfocused(client_id)
+            emit("not_focused_warning", {
+                "message": f"{reason} for more than 10 seconds!"
+            }, to=client_id)
+            focus_warnings[client_id] = True
+
+    def reset_focus_timer():
+        if focus_start_times[client_id] is not None or focus_warnings[client_id]:
+            log_unfocused_recovery(client_id)
+        focus_start_times[client_id] = None
+        focus_warnings[client_id] = False
+
+    try:
+        if not data or "frame" not in data:
+            emit("error", {"message": "Invalid frame data"})
+            return
+
+        frame_data = data["frame"].split(",")[1]
+        frame = np.frombuffer(base64.b64decode(frame_data), np.uint8)
+        frame = cv2.imdecode(frame, cv2.IMREAD_COLOR)
+
+        if frame is None:
+            emit("error", {"message": "Failed to decode frame"})
+            return
+
+        bboxes, keypoints = face_detector.detect(frame)
+        if len(bboxes) == 0:
+            _, buffer = cv2.imencode('.jpg', frame)
+            frame_base64 = "data:image/jpeg;base64," + base64.b64encode(buffer).decode('utf-8')
+            emit("receive_frame", {
+                "angles": {"yaw": 0, "pitch": 0, "roll": 0},
+                "frame": frame_base64,
+                "focused": False
+            })
+            emit_frame_to_admins(False, frame_base64)
+            handle_unfocused("No face detected")
+            return
+
+        bbox = bboxes[0]
+        x_min, y_min, x_max, y_max = map(int, bbox[:4])
+        x_min, y_min, x_max, y_max = expand_bbox(x_min, y_min, x_max, y_max)
+
+        if x_min >= x_max or y_min >= y_max or x_min < 0 or y_min < 0 or \
+           x_max > frame.shape[1] or y_max > frame.shape[0]:
+            logger.warning(f"Invalid bounding box: {x_min}, {y_min}, {x_max}, {y_max}")
+            _, buffer = cv2.imencode('.jpg', frame)
+            frame_base64 = "data:image/jpeg;base64," + base64.b64encode(buffer).decode('utf-8')
+            emit("receive_frame", {
+                "angles": {"yaw": 0, "pitch": 0, "roll": 0},
+                "frame": frame_base64,
+                "focused": False
+            })
+            emit_frame_to_admins(False, frame_base64)
+            handle_unfocused("Invalid bounding box")
+            return
+
+        cropped_image = frame[y_min:y_max, x_min:x_max]
+        image = pre_process(cropped_image).to(device)
+
+        with torch.no_grad():
+            rotation_matrix = head_pose(image)
+            euler = np.degrees(compute_euler_angles_from_rotation_matrices(rotation_matrix))
+            p_pred_deg = euler[:, 0].cpu().item()
+            y_pred_deg = euler[:, 1].cpu().item()
+            r_pred_deg = euler[:, 2].cpu().item()
+
+        is_focused = -15 <= y_pred_deg <= 15 and -15 <= p_pred_deg <= 15 and -15 <= r_pred_deg <= 15
+
+        if not is_focused:
+            handle_unfocused("Head pose out of range")
+        else:
+            reset_focus_timer()
+
+        draw_axis(frame, y_pred_deg, p_pred_deg, r_pred_deg, bbox=[x_min, y_min, x_max, y_max], size_ratio=0.5)
+
+        angles = {
+            "yaw": y_pred_deg,
+            "pitch": p_pred_deg,
+            "roll": r_pred_deg
+        }
+
+        _, buffer = cv2.imencode('.jpg', frame)
+        frame_base64 = "data:image/jpeg;base64," + base64.b64encode(buffer).decode('utf-8')
+
+        response = {
+            "angles": angles,
+            "frame": frame_base64,
+            "focused": is_focused,
+        }
+
+        emit("receive_frame", response)
+        emit_frame_to_admins(is_focused, frame_base64)
+
     except Exception as e:
         logger.exception("Error while processing frame")
         try:
             emit("error", {"message": str(e)})
         except:
             logger.exception("Failed to emit error message")
+
             
 #for real testing camera
 @socketio.on("frame_camera")
 def process_frame_camera(data):
     client_id = request.sid
     username = usernames.get(client_id, "Unknown")
-    if client_id not in focus_start_times:
-        focus_start_times[client_id] = None
-        
-    if client_id not in focus_warnings:
-        focus_warnings[client_id] = False
-
     
-    try:
-        # Check if the frame data exists
-        if not data or "frame" not in data:
-            emit("error", {"message": "Invalid frame data"})
-            return
+    # Inisialisasi state
+    focus_start_times.setdefault(client_id, None)
+    focus_warnings.setdefault(client_id, False)
 
-        # Decode Base64 frame
-        frame_data = data["frame"].split(",")[1]
-        frame = np.frombuffer(base64.b64decode(frame_data), np.uint8)
-        frame = cv2.imdecode(frame, cv2.IMREAD_COLOR)
-        
-        if frame is None:
-            emit("error", {"message": "Failed to decode frame"})
-            return
-
-        # Initialize response with default values
-        response = {
-            "focused": False,
-        }
-
-        # Perform face detection
-        bboxes, keypoints = face_detector.detect(frame)
-        
-        # If no faces detected, return the original frame with default angles
-        if len(bboxes) == 0:
-            response["focused"] = "No face detected"
-            emit("receive_status", response)
-            
-            # Emit to all connected admins who requested video
-            for admin_id in admin_clients:
-                _, buffer = cv2.imencode('.jpg', frame)
-                frame_base64 = "data:image/jpeg;base64," + base64.b64encode(buffer).decode('utf-8')
-                emit("receive_all_frame", {
-                    "client_id": client_id,
-                    "username": username,
-                    "frame": frame_base64,
-                    "focused": False
-                }, to=admin_id)
-                
-            return
-            
-        # Process the first detected face
-        bbox, keypoint = bboxes[0], keypoints[0]
-        x_min, y_min, x_max, y_max = map(int, bbox[:4])
-
-        # Expand bounding box
-        x_min, y_min, x_max, y_max = expand_bbox(x_min, y_min, x_max, y_max)
-        
-        # Check if bounding box dimensions are valid
-        if x_min >= x_max or y_min >= y_max or x_min < 0 or y_min < 0 or x_max > frame.shape[1] or y_max > frame.shape[0]:
-            logger.warning(f"Invalid bounding box: {x_min}, {y_min}, {x_max}, {y_max}")
-            response["focused"] = False
-            emit("receive_status", response)
-            
-            # Emit to all connected admins who requested video
-            for admin_id in admin_clients:
-                _, buffer = cv2.imencode('.jpg', frame)
-                frame_base64 = "data:image/jpeg;base64," + base64.b64encode(buffer).decode('utf-8')
-                emit("receive_all_frame", {
-                    "client_id": client_id,
-                    "username": username,
-                    "frame": frame_base64,
-                    "focused": False
-                }, to=admin_id)
-                
-            return
-
-        # Pre-process the cropped image
-        cropped_image = frame[y_min:y_max, x_min:x_max]
-        image = pre_process(cropped_image)
-        image = image.to(device)
-
-        # Perform head pose estimation
-        with torch.no_grad():
-            rotation_matrix = head_pose(image)
-            euler = np.degrees(compute_euler_angles_from_rotation_matrices(rotation_matrix))
-            p_pred_deg = euler[:, 0].cpu()
-            y_pred_deg = euler[:, 1].cpu()
-            r_pred_deg = euler[:, 2].cpu()
-        
-        is_focused = -15 <= y_pred_deg.item() <= 15 and -15 <= p_pred_deg.item() <= 15 and -15 <= r_pred_deg.item() <= 15
-
-        if not is_focused:
-            if focus_start_times[client_id] is None:
-                focus_start_times[client_id] = time.time()
-                focus_warnings[client_id] = False
-            elif time.time() - focus_start_times[client_id] >= 10:
-                if not focus_warnings[client_id]:
-                    update_unfocused(client_id)
-                    # Emit warning to the client
-                    emit("not_focused_warning", {
-                        "message": "User has been unfocused for more than 10 seconds!"
-                    }, to=client_id)
-                    focus_warnings[client_id] = True
-        else:
-            
-            log_unfocused_recovery(client_id)
-            focus_start_times[client_id] = None 
-            focus_warnings[client_id] = False
-
-        # Combine the angles and the frame in the response
-        response = {
-            "focused": is_focused,
-        }
-        
-        # Emit the processed frame
-        emit("receive_status", response)
-        
-        # Emit to all connected admins who requested video
+    def emit_frame_to_admins(focused, frame):
+        _, buffer = cv2.imencode('.jpg', frame)
+        frame_base64 = "data:image/jpeg;base64," + base64.b64encode(buffer).decode('utf-8')
         for admin_id in admin_clients:
-            
-            # Draw axis on the frame
-            draw_axis(
-                frame,
-                y_pred_deg.item(),
-                p_pred_deg.item(),
-                r_pred_deg.item(),
-                bbox=[x_min, y_min, x_max, y_max],
-                size_ratio=0.5
-            )
-            # Encode the frame back to JPEG format
-            _, buffer = cv2.imencode('.jpg', frame)
-            # Encode the frame to Base64
-            frame_base64 = "data:image/jpeg;base64," + base64.b64encode(buffer).decode('utf-8')
             emit("receive_all_frame", {
                 "client_id": client_id,
                 "username": username,
                 "frame": frame_base64,
-                "focused": is_focused
+                "focused": focused
             }, to=admin_id)
-        
+
+    def handle_unfocused(reason):
+        now = time.time()
+        if focus_start_times[client_id] is None:
+            focus_start_times[client_id] = now
+            focus_warnings[client_id] = False
+        elif now - focus_start_times[client_id] >= 10 and not focus_warnings[client_id]:
+            update_unfocused(client_id)
+            emit("not_focused_warning", {
+                "message": f"{reason} for more than 10 seconds!"
+            }, to=client_id)
+            focus_warnings[client_id] = True
+
+    def reset_focus_timer():
+        if focus_start_times[client_id] is not None or focus_warnings[client_id]:
+            log_unfocused_recovery(client_id)
+        focus_start_times[client_id] = None
+        focus_warnings[client_id] = False
+
+    try:
+        if not data or "frame" not in data:
+            emit("error", {"message": "Invalid frame data"})
+            return
+
+        frame_data = data["frame"].split(",")[1]
+        frame = np.frombuffer(base64.b64decode(frame_data), np.uint8)
+        frame = cv2.imdecode(frame, cv2.IMREAD_COLOR)
+
+        if frame is None:
+            emit("error", {"message": "Failed to decode frame"})
+            return
+
+        # Detect face
+        bboxes, keypoints = face_detector.detect(frame)
+        if len(bboxes) == 0:
+            emit("receive_status", {"focused": "No face detected"})
+            emit_frame_to_admins(False, frame)
+            handle_unfocused("No face detected")
+            return
+
+        bbox, keypoint = bboxes[0], keypoints[0]
+        x_min, y_min, x_max, y_max = map(int, bbox[:4])
+        x_min, y_min, x_max, y_max = expand_bbox(x_min, y_min, x_max, y_max)
+
+        # Validasi bounding box
+        if x_min >= x_max or y_min >= y_max or x_min < 0 or y_min < 0 or \
+           x_max > frame.shape[1] or y_max > frame.shape[0]:
+            logger.warning(f"Invalid bounding box: {x_min}, {y_min}, {x_max}, {y_max}")
+            emit("receive_status", {"focused": False})
+            emit_frame_to_admins(False, frame)
+            handle_unfocused("Invalid bounding box")
+            return
+
+        # Pre-process dan estimasi head pose
+        cropped_image = frame[y_min:y_max, x_min:x_max]
+        image = pre_process(cropped_image).to(device)
+
+        with torch.no_grad():
+            rotation_matrix = head_pose(image)
+            euler = np.degrees(compute_euler_angles_from_rotation_matrices(rotation_matrix))
+            p_pred_deg = euler[:, 0].cpu().item()
+            y_pred_deg = euler[:, 1].cpu().item()
+            r_pred_deg = euler[:, 2].cpu().item()
+
+        is_focused = -15 <= y_pred_deg <= 15 and -15 <= p_pred_deg <= 15 and -15 <= r_pred_deg <= 15
+
+        if not is_focused:
+            handle_unfocused("Head pose out of range")
+        else:
+            reset_focus_timer()
+
+        emit("receive_status", {"focused": is_focused})
+
+        # Tambahkan visualisasi
+        draw_axis(frame, y_pred_deg, p_pred_deg, r_pred_deg, [x_min, y_min, x_max, y_max], size_ratio=0.5)
+        emit_frame_to_admins(is_focused, frame)
+
     except Exception as e:
         logger.exception("Error while processing frame")
         try:
             emit("error", {"message": str(e)})
         except:
             logger.exception("Failed to emit error message")
+
     
 
 
