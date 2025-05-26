@@ -13,7 +13,7 @@ from models.scrfd import SCRFD
 from models.mobilenetv2 import mobilenet_v2
 import base64
 import logging
-from utils.general import compute_euler_angles_from_rotation_matrices, draw_axis, pre_process, expand_bbox
+from utils.general import compute_euler_angles_from_rotation_matrices, draw_axis, pre_process, expand_bbox, draw_info
 from utils.session import start_session, update_unfocused, log_unfocused_recovery, end_session, get_session_data, delete_session
 
 
@@ -220,6 +220,8 @@ def process_frame(data):
             reset_focus_timer()
 
         draw_axis(frame, y_pred_deg, p_pred_deg, r_pred_deg, bbox=[x_min, y_min, x_max, y_max], size_ratio=0.5)
+        draw_info(frame, y_pred_deg, p_pred_deg, r_pred_deg)
+        
 
         angles = {
             "yaw": y_pred_deg,
@@ -342,6 +344,7 @@ def process_frame_camera(data):
 
         # Tambahkan visualisasi
         draw_axis(frame, y_pred_deg, p_pred_deg, r_pred_deg, [x_min, y_min, x_max, y_max], size_ratio=0.5)
+        draw_info(frame, y_pred_deg, p_pred_deg, r_pred_deg)
         emit_frame_to_admins(is_focused, frame)
 
     except Exception as e:

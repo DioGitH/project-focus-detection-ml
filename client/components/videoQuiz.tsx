@@ -72,6 +72,7 @@ const VideoQuiz = forwardRef<VideoQuizHandle, { username: string; onSummaryRecei
         return canvas;
     };
 
+
     const startCamera = async () => {
         if (!socketRef.current?.connected) {
             socketRef.current?.connect();

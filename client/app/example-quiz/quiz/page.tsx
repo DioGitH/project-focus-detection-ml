@@ -5,6 +5,7 @@ import QuestionCard from "@/components/question-card";
 import { questions } from "@/data/questions";
 import VideoQuiz, { VideoQuizHandle } from "@/components/videoQuiz";
 import ResultPage from "@/components/resultPage";
+import { useRouter } from "next/navigation";
 
 export default function QuizPage(){
     const { userData } = useUser();
@@ -15,6 +16,7 @@ export default function QuizPage(){
     const [score, setScore] = useState(0);
     const [isFinished, setIsFinished] = useState(false);
     const [summary, setSummary] = useState<any>(null);
+    const router = useRouter();
 
 
     useEffect(() => {
@@ -40,6 +42,10 @@ export default function QuizPage(){
         }
     };
 
+    const handleBack = () => {
+        router.push('/example-quiz');
+    };
+
     return (
         <div className="w-screen flex justify-center">
             <div className="w-[80vw]">
@@ -49,7 +55,7 @@ export default function QuizPage(){
                         </div>
                         <div className="w-full col-span-4">
                             {isFinished ? (
-                                <ResultPage score={score} total={questions.length} summary={summary} name={name}/>
+                                <ResultPage score={score} total={questions.length} summary={summary} name={name} onClickButton={handleBack}/>
                             ) : (
                                 <div className="">
                                     <h1 className="text-2xl font-bold text-center">Quiz</h1>

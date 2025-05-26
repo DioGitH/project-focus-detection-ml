@@ -63,6 +63,41 @@ def draw_axis(image: np.ndarray, yaw: float, pitch: float, roll: float, bbox: Li
     cv2.line(image, (tdx, tdy), (x2, y2), (0, 255, 0), 2)  # Green (Y-axis)
     cv2.line(image, (tdx, tdy), (x3, y3), (255, 0, 0), 2)  # Blue (Z-axis)
     
+def draw_info(image: np.ndarray, yaw: float, pitch: float, roll: float,
+              threshold: tuple = (-15, 15)) -> None:
+    """
+    Tambahkan informasi yaw, pitch, roll, dan status fokus ke frame (pojok kiri atas).
+    Menentukan fokus berdasarkan apakah yaw, pitch, dan roll berada dalam rentang threshold.
+    """
+    font_scale = 0.4
+    thickness = 1
+    line_height = 20
+    start_x, start_y = 10, 20
+
+    # Warna teks per komponen
+    yaw_color = (0, 255, 0)    # hijau
+    pitch_color = (255, 0, 255)  # ungu
+    roll_color = (0, 0, 255)   # merah
+
+    # Cek apakah masing-masing sudut berada dalam threshold
+    is_yaw_ok = threshold[0] <= yaw <= threshold[1]
+    is_pitch_ok = threshold[0] <= pitch <= threshold[1]
+    is_roll_ok = threshold[0] <= roll <= threshold[1]
+    is_focused = is_yaw_ok and is_pitch_ok and is_roll_ok
+
+    # Gambar teks untuk yaw, pitch, dan roll
+    cv2.putText(image, f"Yaw: {yaw:.2f}", (start_x, start_y), cv2.FONT_HERSHEY_SIMPLEX, font_scale, yaw_color, thickness)
+    cv2.putText(image, f"Pitch: {pitch:.2f}", (start_x, start_y + line_height), cv2.FONT_HERSHEY_SIMPLEX, font_scale, pitch_color, thickness)
+    cv2.putText(image, f"Roll: {roll:.2f}", (start_x, start_y + 2 * line_height), cv2.FONT_HERSHEY_SIMPLEX, font_scale, roll_color, thickness)
+
+    # Gambar status fokus
+    focus_color = (0, 255, 0) if is_focused else (0, 0, 255)
+    focus_text = "FOKUS" if is_focused else "TIDAK FOKUS"
+    cv2.putText(image, f"Status: {focus_text}", (start_x, start_y + 3 * line_height), cv2.FONT_HERSHEY_SIMPLEX, font_scale, focus_color, thickness)
+
+
+
+    
 def pre_process(image):
     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     transform = transforms.Compose([
