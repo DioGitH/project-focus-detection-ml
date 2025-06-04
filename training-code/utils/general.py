@@ -4,6 +4,8 @@ import random
 import logging
 import numpy as np
 import scipy.io as sio
+import time
+from typing import Tuple
 
 import torch
 import torch.distributed as distributed
@@ -448,3 +450,24 @@ def draw_axis(image: np.ndarray, yaw: float, pitch: float, roll: float, bbox: Li
     cv2.line(image, (tdx, tdy), (x1, y1), (0, 0, 255), 2)  # Red (X-axis)
     cv2.line(image, (tdx, tdy), (x2, y2), (0, 255, 0), 2)  # Green (Y-axis)
     cv2.line(image, (tdx, tdy), (x3, y3), (255, 0, 0), 2)  # Blue (Z-axis)
+    
+def draw_fps(image: np.ndarray, prev_time: float, position: Tuple[int, int] = (10, 30), color: Tuple[int, int, int] = (0, 255, 0), font_scale: float = 1.0, thickness: int = 2) -> float:
+    """
+    Draws the current FPS on the image and returns the updated timestamp.
+
+    Args:
+        image (np.ndarray): The image to draw on.
+        prev_time (float): Timestamp of the previous frame.
+        position (Tuple[int, int], optional): Position to draw the FPS text. Default is (10, 30).
+        color (Tuple[int, int, int], optional): Text color in BGR. Default is green.
+        font_scale (float, optional): Font scale for the text. Default is 1.0.
+        thickness (int, optional): Thickness of the text. Default is 2.
+
+    Returns:
+        float: Current timestamp to be used in the next frame.
+    """
+    curr_time = time.time()
+    fps = 1.0 / (curr_time - prev_time) if curr_time != prev_time else 0.0
+    cv2.putText(image, f'FPS: {int(fps)}', position, cv2.FONT_HERSHEY_SIMPLEX, font_scale, color, thickness)
+    return curr_time
+

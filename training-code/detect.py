@@ -11,7 +11,7 @@ import torch
 from torchvision import transforms
 
 from models import get_model, SCRFD
-from utils.general import compute_euler_angles_from_rotation_matrices, draw_cube, draw_axis
+from utils.general import compute_euler_angles_from_rotation_matrices, draw_cube, draw_axis, draw_fps
 
 warnings.filterwarnings("ignore")
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
@@ -107,6 +107,7 @@ def main(params):
         out = cv2.VideoWriter(params.output, fourcc, cap.get(cv2.CAP_PROP_FPS), (width, height))
 
     with torch.no_grad():
+        prev_time = time.time()
         while True:
             success, frame = cap.read()
             if not success:
@@ -151,6 +152,8 @@ def main(params):
                         bbox=[x_min, y_min, x_max, y_max],
                         size_ratio=0.5
                     )
+                
+                prev_time= draw_fps(frame, prev_time)
 
             if params.view:
                 cv2.imshow('Demo', frame)
