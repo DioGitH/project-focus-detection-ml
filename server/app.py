@@ -304,7 +304,7 @@ def process_frame_camera(data):
         # Detect face
         bboxes, keypoints = face_detector.detect(frame)
         if len(bboxes) == 0:
-            emit("receive_status", {"focused": "No face detected"})
+            emit("receive_status", {"focused": False})
             emit_frame_to_admins(False, frame)
             handle_unfocused("No face detected")
             return
