@@ -70,12 +70,6 @@ def handle_connect():
 def handle_disconnect():
     client_id = request.sid
     
-    username = usernames.pop(client_id, None)
-    if username:
-        focus_start_times.pop(username, None)
-        focus_warnings.pop(username, None)
-        delete_session(username)
-    
     active_clients.discard(client_id)          
     admin_clients.discard(client_id)           
     
@@ -94,6 +88,13 @@ def handle_stop_camera(data):
     summary = end_session(user)
     if "error" not in summary:
         emit("session_summary", summary, to=client_id)
+
+    if user:
+        usernames.pop(client_id, None)
+        focus_start_times.pop(user, None)
+        focus_warnings.pop(user, None)
+        delete_session(user)
+        
     logger.info("Camera stop request received")
     return {'status': 'success'}
 
