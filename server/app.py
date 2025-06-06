@@ -31,7 +31,9 @@ active_clients = set()
 focus_start_times = {}
 admin_clients =set()
 usernames = {}
+# usernames_sid = {}
 focus_warnings={}
+# disconnect_timers = {}
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -68,16 +70,14 @@ def handle_connect():
 def handle_disconnect():
     client_id = request.sid
     
-    # user = usernames.get(client_id, "Unknown")
-    # summary = end_session(client_id, username=user)
-    # if "error" not in summary:
-    #     print("Summary (from disconnect):", summary)
-    delete_session(client_id)
+    username = usernames.pop(client_id, None)
+    if username:
+        focus_start_times.pop(username, None)
+        focus_warnings.pop(username, None)
+        delete_session(username)
     
     active_clients.discard(client_id)          
     admin_clients.discard(client_id)           
-    focus_start_times.pop(client_id, None)    
-    usernames.pop(client_id, None) 
     
     for admin_id in admin_clients:
         emit("user_disconnected", {
@@ -91,11 +91,12 @@ def handle_disconnect():
 def handle_stop_camera(data):
     client_id = request.sid
     user = usernames.get(client_id, "Unknown")
-    summary = end_session(client_id, username=user)
+    summary = end_session(user)
     if "error" not in summary:
         emit("session_summary", summary, to=client_id)
     logger.info("Camera stop request received")
     return {'status': 'success'}
+
             
 @socketio.on("register_username")
 def handle_register_username(data):
@@ -103,11 +104,12 @@ def handle_register_username(data):
     username = data.get("username")
     if username:
         usernames[client_id] = username
-        if client_id not in get_session_data():
-            start_session(client_id)
+        if username not in get_session_data():
+            start_session(username)
         logger.info(f"Username '{username}' set for client {client_id}")
     else:
         emit("error", {"message": "Username is required"})
+
     
             
 @socketio.on("request_video_admin")
@@ -128,8 +130,8 @@ def process_frame(data):
     client_id = request.sid
     username = usernames.get(client_id, "Unknown")
 
-    focus_start_times.setdefault(client_id, None)
-    focus_warnings.setdefault(client_id, False)
+    focus_start_times.setdefault(username, None)
+    focus_warnings.setdefault(username, False)
 
     def emit_frame_to_admins(focused, frame_base64):
         for admin_id in admin_clients:
@@ -142,21 +144,21 @@ def process_frame(data):
 
     def handle_unfocused(reason):
         now = time.time()
-        if focus_start_times[client_id] is None:
-            focus_start_times[client_id] = now
-            focus_warnings[client_id] = False
-        elif now - focus_start_times[client_id] >= 10 and not focus_warnings[client_id]:
-            update_unfocused(client_id)
+        if focus_start_times[username] is None:
+            focus_start_times[username] = now
+            focus_warnings[username] = False
+        elif now - focus_start_times[username] >= 10 and not focus_warnings[username]:
+            update_unfocused(username)
             emit("not_focused_warning", {
                 "message": f"{reason} for more than 10 seconds!"
             }, to=client_id)
-            focus_warnings[client_id] = True
+            focus_warnings[username] = True
 
     def reset_focus_timer():
-        if focus_start_times[client_id] is not None or focus_warnings[client_id]:
-            log_unfocused_recovery(client_id)
-        focus_start_times[client_id] = None
-        focus_warnings[client_id] = False
+        if focus_start_times[username] is not None or focus_warnings[username]:
+            log_unfocused_recovery(username)
+        focus_start_times[username] = None
+        focus_warnings[username] = False
 
     try:
         if not data or "frame" not in data:
@@ -256,8 +258,8 @@ def process_frame_camera(data):
     username = usernames.get(client_id, "Unknown")
     
     # Inisialisasi state
-    focus_start_times.setdefault(client_id, None)
-    focus_warnings.setdefault(client_id, False)
+    focus_start_times.setdefault(username, None)
+    focus_warnings.setdefault(username, False)
 
     def emit_frame_to_admins(focused, frame):
         _, buffer = cv2.imencode('.jpg', frame)
@@ -272,21 +274,22 @@ def process_frame_camera(data):
 
     def handle_unfocused(reason):
         now = time.time()
-        if focus_start_times[client_id] is None:
-            focus_start_times[client_id] = now
-            focus_warnings[client_id] = False
-        elif now - focus_start_times[client_id] >= 10 and not focus_warnings[client_id]:
-            update_unfocused(client_id)
+        if focus_start_times[username] is None:
+            focus_start_times[username] = now
+            focus_warnings[username] = False
+        elif now - focus_start_times[username] >= 10 and not focus_warnings[username]:
+            update_unfocused(username)
             emit("not_focused_warning", {
                 "message": f"{reason} for more than 10 seconds!"
             }, to=client_id)
-            focus_warnings[client_id] = True
+            focus_warnings[username] = True
 
     def reset_focus_timer():
-        if focus_start_times[client_id] is not None or focus_warnings[client_id]:
-            log_unfocused_recovery(client_id)
-        focus_start_times[client_id] = None
-        focus_warnings[client_id] = False
+        username = usernames.get(client_id, "Unknown")
+        if focus_start_times[username] is not None or focus_warnings[username]:
+            log_unfocused_recovery(username)
+        focus_start_times[username] = None
+        focus_warnings[username] = False
 
     try:
         if not data or "frame" not in data:
