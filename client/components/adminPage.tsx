@@ -49,12 +49,12 @@ export default function AdminPage() {
         if (!socket) return;
 
         if (requestVideo) {
-            socket.emit("request_video_admin");
+            socket.emit("request_video_admin", { room: "admin_room" });
             setRequestVideo(false);
         }
 
         if (stopRequest) {
-            socket.emit("stop_video_admin");
+            socket.emit("stop_video_admin", { room: "admin_room" });
             setStreams({});
             setRequestVideo(false);
             setStopRequest(false);

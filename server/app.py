@@ -2,7 +2,7 @@ import eventlet
 import eventlet.wsgi
 
 from flask import Flask, request
-from flask_socketio import SocketIO, emit, disconnect
+from flask_socketio import SocketIO, emit, disconnect, join_room, leave_room, rooms
 
 import cv2
 import numpy as np
@@ -29,11 +29,9 @@ socketio = SocketIO(app, cors_allowed_origins="*", ping_timeout=60, ping_interva
 # Track active clients
 active_clients = set()
 focus_start_times = {}
-admin_clients =set()
 usernames = {}
-# usernames_sid = {}
 focus_warnings={}
-# disconnect_timers = {}
+room_reg={}
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -71,12 +69,15 @@ def handle_disconnect():
     client_id = request.sid
     
     active_clients.discard(client_id)          
-    admin_clients.discard(client_id)           
+    for room in rooms(client_id):
+        leave_room(room)
+        logger.info(f"Client {client_id} left room {room}")           
+    room_reg.pop(client_id, None)
     
-    for admin_id in admin_clients:
+    if room_reg:
         emit("user_disconnected", {
             "client_id": client_id
-        }, to=admin_id)
+        }, to="admin_room")
 
     logger.info(f"Client disconnected: {client_id}. Total clients: {len(active_clients)}")
 
@@ -114,16 +115,20 @@ def handle_register_username(data):
     
             
 @socketio.on("request_video_admin")
-def handle_admin_request_video():
+def handle_admin_request_video(data):
     client_id = request.sid
-    admin_clients.add(client_id)
-    logger.info(f"Admin {client_id} requested video stream.")
+    room = data.get("room")
+    join_room(room)
+    room_reg[client_id] = room
+    logger.info(f"Admin {client_id} room {room} requested video stream.")
 
 @socketio.on("stop_video_admin")
-def handle_admin_stop_video():
+def handle_admin_stop_video(data):
     client_id = request.sid
-    admin_clients.discard(client_id)
-    logger.info(f"Admin {client_id} stopped receiving video.")
+    room = data.get("room")
+    leave_room(room)
+    room_reg.pop(client_id, None)
+    logger.info(f"Admin {client_id} room {room} stopped receiving video.")
     
 #for page test camera 
 @socketio.on("send_frame")
@@ -135,13 +140,14 @@ def process_frame(data):
     focus_warnings.setdefault(username, False)
 
     def emit_frame_to_admins(focused, frame_base64):
-        for admin_id in admin_clients:
+        if room_reg:
+            room_name = "admin_room"
             emit("receive_all_frame", {
-                "client_id": client_id,
-                "username": username,
-                "frame": frame_base64,
-                "focused": focused
-            }, to=admin_id)
+                        "client_id": client_id,
+                        "username": username,
+                        "frame": frame_base64,
+                        "focused": focused
+                    }, room=room_name)
 
     def handle_unfocused(reason):
         now = time.time()
@@ -263,15 +269,16 @@ def process_frame_camera(data):
     focus_warnings.setdefault(username, False)
 
     def emit_frame_to_admins(focused, frame):
-        _, buffer = cv2.imencode('.jpg', frame)
-        frame_base64 = "data:image/jpeg;base64," + base64.b64encode(buffer).decode('utf-8')
-        for admin_id in admin_clients:
+        if room_reg:
+            _, buffer = cv2.imencode('.jpg', frame)
+            frame_base64 = "data:image/jpeg;base64," + base64.b64encode(buffer).decode('utf-8')
+            room_name = "admin_room"
             emit("receive_all_frame", {
-                "client_id": client_id,
-                "username": username,
-                "frame": frame_base64,
-                "focused": focused
-            }, to=admin_id)
+                        "client_id": client_id,
+                        "username": username,
+                        "frame": frame_base64,
+                        "focused": focused
+                    }, room=room_name)
 
     def handle_unfocused(reason):
         now = time.time()
