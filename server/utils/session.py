@@ -1,5 +1,6 @@
 import time
 import logging
+from datetime import datetime
 
 session_data = {}
 
@@ -31,10 +32,13 @@ def log_unfocused_recovery(username):
         end_time = time.time()
         start_time = session_data[username]["last_unfocused_time"]
         duration = end_time - start_time
+        
+        start_dt = datetime.fromtimestamp(start_time).isoformat()
+        end_dt = datetime.fromtimestamp(end_time).isoformat()
         session_data[username]["total_unfocused_duration"] += duration
         session_data[username]["unfocused_timestamps"].append({
-            "start": start_time,
-            "end": end_time,
+            "start": start_dt,
+            "end": end_dt,
             "duration": duration
         })
         session_data[username]["last_unfocused_time"] = None
@@ -47,10 +51,12 @@ def end_session(username):
         end_time = time.time()
         start_time = session_data[username]["last_unfocused_time"]
         duration = end_time - start_time
+        start_dt = datetime.fromtimestamp(start_time).isoformat()
+        end_dt = datetime.fromtimestamp(end_time).isoformat()
         session_data[username]["total_unfocused_duration"] += duration
         session_data[username]["unfocused_timestamps"].append({
-            "start": start_time,
-            "end": end_time,
+            "start": start_dt,
+            "end": end_dt,
             "duration": duration
         })
         session_data[username]["last_unfocused_time"] = None
