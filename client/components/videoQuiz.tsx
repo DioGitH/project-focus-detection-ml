@@ -6,6 +6,7 @@ import { toast } from "sonner"
 export type VideoQuizHandle = {
     startCamera: () => void;
     stopCamera: () => void;
+    regist_user: () => void;
 };
 
 const VideoQuiz = forwardRef<VideoQuizHandle, { username: string; onSummaryReceived?:(summary:any)=>void }>(({ username, onSummaryReceived }, ref, ) => {
@@ -16,11 +17,12 @@ const VideoQuiz = forwardRef<VideoQuizHandle, { username: string; onSummaryRecei
     const [stream, setStream] = useState<MediaStream | null>(null);
     const captureIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-    const FPS = 50;
+    const FPS = 33;
 
     useImperativeHandle(ref, () => ({
         startCamera,
-        stopCamera
+        stopCamera,
+        regist_user
     }));
 
     function socketUsersClient() {
@@ -61,7 +63,7 @@ const VideoQuiz = forwardRef<VideoQuizHandle, { username: string; onSummaryRecei
         };
     }, []);
 
-    const capture = (videoElement: HTMLVideoElement) => {
+    function capture(videoElement: HTMLVideoElement) {
         const canvas = document.createElement('canvas');
         canvas.width = 240;
         canvas.height = 180;
@@ -70,7 +72,7 @@ const VideoQuiz = forwardRef<VideoQuizHandle, { username: string; onSummaryRecei
             ctx.drawImage(videoElement, 0, 0, 240, 180);
         }
         return canvas;
-    };
+    }
 
 
     const startCamera = async () => {
@@ -78,7 +80,7 @@ const VideoQuiz = forwardRef<VideoQuizHandle, { username: string; onSummaryRecei
             socketRef.current?.connect();
         }
 
-        socketRef.current?.emit('register_username', { username });
+        // socketRef.current?.emit('register_username', { username });
 
         const mediaStream = await navigator.mediaDevices.getUserMedia({ video: true });
         setStream(mediaStream);
@@ -116,6 +118,10 @@ const VideoQuiz = forwardRef<VideoQuizHandle, { username: string; onSummaryRecei
 
             socketRef.current?.emit('stop_camera', {});
         }
+    };
+
+    const regist_user = () => {
+        socketRef.current?.emit('register_username', { username});
     };
 
     return (

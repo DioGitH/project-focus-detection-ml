@@ -20,6 +20,7 @@ export default function QuizPage(){
 
 
     useEffect(() => {
+        videoRef.current?.regist_user();
         videoRef.current?.startCamera();
 
         return () => {
