@@ -198,8 +198,8 @@ export default function VideoStream() {
                                             <ul>
                                                 {sessionSummary.unfocused_timestamps.map((item, index) => (
                                                     <li key={index}>
-                                                        Start: {new Date(item.start * 1000).toLocaleTimeString()} |
-                                                        End: {new Date(item.end * 1000).toLocaleTimeString()} |
+                                                        Start: {new Date(item.start).toLocaleTimeString('en-US', { hour12: false })} |
+                                                        End: {new Date(item.end).toLocaleTimeString('en-US', { hour12: false })} |
                                                         Duration: {Math.round(item.duration)}s
                                                     </li>
                                                 ))}

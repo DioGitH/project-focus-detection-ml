@@ -148,25 +148,34 @@ def process_frame(data):
                         "frame": frame_base64,
                         "focused": focused
                     }, room=room_name)
-
+    
     def handle_unfocused(reason):
+        username = usernames.get(client_id)
+        if not username:
+            return
+
         now = time.time()
-        if focus_start_times[username] is None:
+        if focus_start_times.get(username) is None:
             focus_start_times[username] = now
             focus_warnings[username] = False
-        elif now - focus_start_times[username] >= 10 and not focus_warnings[username]:
+        elif now - focus_start_times[username] >= 10 and not focus_warnings.get(username, False):
             update_unfocused(username)
             emit("not_focused_warning", {
                 "message": f"{reason} for more than 10 seconds!"
             }, to=client_id)
             focus_warnings[username] = True
-
+    
     def reset_focus_timer():
-        if focus_start_times[username] is not None or focus_warnings[username]:
+        username = usernames.get(client_id)
+        if not username:
+            return
+
+        if focus_start_times.get(username) is not None or focus_warnings.get(username, False):
             log_unfocused_recovery(username)
+
         focus_start_times[username] = None
         focus_warnings[username] = False
-
+    
     try:
         if not data or "frame" not in data:
             emit("error", {"message": "Invalid frame data"})
@@ -279,13 +288,17 @@ def process_frame_camera(data):
                         "frame": frame_base64,
                         "focused": focused
                     }, room=room_name)
-
+    
     def handle_unfocused(reason):
+        username = usernames.get(client_id)
+        if not username:
+            return
+
         now = time.time()
-        if focus_start_times[username] is None:
+        if focus_start_times.get(username) is None:
             focus_start_times[username] = now
             focus_warnings[username] = False
-        elif now - focus_start_times[username] >= 10 and not focus_warnings[username]:
+        elif now - focus_start_times[username] >= 10 and not focus_warnings.get(username, False):
             update_unfocused(username)
             emit("not_focused_warning", {
                 "message": f"{reason} for more than 10 seconds!"
@@ -293,11 +306,16 @@ def process_frame_camera(data):
             focus_warnings[username] = True
 
     def reset_focus_timer():
-        username = usernames.get(client_id, "Unknown")
-        if focus_start_times[username] is not None or focus_warnings[username]:
+        username = usernames.get(client_id)
+        if not username:
+            return
+
+        if focus_start_times.get(username) is not None or focus_warnings.get(username, False):
             log_unfocused_recovery(username)
+
         focus_start_times[username] = None
         focus_warnings[username] = False
+
 
     try:
         if not data or "frame" not in data:
