@@ -199,7 +199,7 @@ def process_frame(data):
                 "focused": False
             })
             emit_frame_to_admins(False, frame_base64)
-            handle_unfocused("No face detected")
+            handle_unfocused("Wajah tidak terdeteksi")
             return
 
         bbox = bboxes[0]
@@ -217,7 +217,7 @@ def process_frame(data):
                 "focused": False
             })
             emit_frame_to_admins(False, frame_base64)
-            handle_unfocused("Invalid bounding box")
+            handle_unfocused("Wajah tidak terdeteksi dengan benar")
             return
 
         cropped_image = frame[y_min:y_max, x_min:x_max]
@@ -233,7 +233,7 @@ def process_frame(data):
         is_focused = -15 <= y_pred_deg <= 15 and -15 <= p_pred_deg <= 15 and -15 <= r_pred_deg <= 15
 
         if not is_focused:
-            handle_unfocused("Head pose out of range")
+            handle_unfocused("Anda tidak fokus")
         else:
             reset_focus_timer()
 
@@ -301,7 +301,7 @@ def process_frame_camera(data):
         elif now - focus_start_times[username] >= 10 and not focus_warnings.get(username, False):
             update_unfocused(username)
             emit("not_focused_warning", {
-                "message": f"{reason} for more than 10 seconds!"
+                "message": f"{reason} lebih dari 10 Detik. Tingkatkan fokus!!!"
             }, to=client_id)
             focus_warnings[username] = True
 
@@ -335,7 +335,7 @@ def process_frame_camera(data):
         if len(bboxes) == 0:
             emit("receive_status", {"focused": False})
             emit_frame_to_admins(False, frame)
-            handle_unfocused("No face detected")
+            handle_unfocused("Wajah tidak terdeteksi")
             return
 
         bbox, keypoint = bboxes[0], keypoints[0]
@@ -348,7 +348,7 @@ def process_frame_camera(data):
             logger.warning(f"Invalid bounding box: {x_min}, {y_min}, {x_max}, {y_max}")
             emit("receive_status", {"focused": False})
             emit_frame_to_admins(False, frame)
-            handle_unfocused("Invalid bounding box")
+            handle_unfocused("Wajah tidak terdeteksi dengan benar")
             return
 
         # Pre-process dan estimasi head pose
@@ -365,7 +365,7 @@ def process_frame_camera(data):
         is_focused = -15 <= y_pred_deg <= 15 and -15 <= p_pred_deg <= 15 and -15 <= r_pred_deg <= 15
 
         if not is_focused:
-            handle_unfocused("Head pose out of range")
+            handle_unfocused("Anda tidak fokus")
         else:
             reset_focus_timer()
 

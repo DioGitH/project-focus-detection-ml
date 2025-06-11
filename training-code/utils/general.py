@@ -468,6 +468,58 @@ def draw_fps(image: np.ndarray, prev_time: float, position: Tuple[int, int] = (1
     """
     curr_time = time.time()
     fps = 1.0 / (curr_time - prev_time) if curr_time != prev_time else 0.0
-    cv2.putText(image, f'FPS: {int(fps)}', position, cv2.FONT_HERSHEY_SIMPLEX, font_scale, color, thickness)
+
+    # Hitung posisi kiri bawah
+    h, w = image.shape[:2]
+    margin = 10
+    text = f'FPS: {int(fps)}'
+
+    # Ambil tinggi teks untuk menentukan posisi y agar tidak keluar frame
+    (text_width, text_height), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)
+    position = (margin, h - margin)
+
+    # Tampilkan teks FPS
+    cv2.putText(image, text, position, cv2.FONT_HERSHEY_SIMPLEX, font_scale, color, thickness)
     return curr_time
+
+def draw_info(image: np.ndarray, yaw: float, pitch: float, roll: float,
+              threshold: tuple = (-15, 15)) -> None:
+    """
+    Tambahkan informasi yaw, pitch, roll, dan status fokus ke frame (pojok kiri atas).
+    Menentukan fokus berdasarkan apakah yaw, pitch, dan roll berada dalam rentang threshold.
+    """
+    
+        # Konversi ke float jika masih tensor
+    if isinstance(yaw, torch.Tensor):
+        yaw = yaw.item()
+    if isinstance(pitch, torch.Tensor):
+        pitch = pitch.item()
+    if isinstance(roll, torch.Tensor):
+        roll = roll.item()
+        
+    font_scale = 0.6
+    thickness = 1
+    line_height = 20
+    start_x, start_y = 10, 20
+
+    # Warna teks per komponen
+    yaw_color = (0, 255, 0)    # hijau
+    pitch_color = (255, 0, 255)  # ungu
+    roll_color = (0, 0, 255)   # merah
+
+    # Cek apakah masing-masing sudut berada dalam threshold
+    is_yaw_ok = threshold[0] <= yaw <= threshold[1]
+    is_pitch_ok = threshold[0] <= pitch <= threshold[1]
+    is_roll_ok = threshold[0] <= roll <= threshold[1]
+    is_focused = is_yaw_ok and is_pitch_ok and is_roll_ok
+
+    # Gambar teks untuk yaw, pitch, dan roll
+    cv2.putText(image, f"Yaw: {yaw:.2f}", (start_x, start_y), cv2.FONT_HERSHEY_SIMPLEX, font_scale, yaw_color, thickness)
+    cv2.putText(image, f"Pitch: {pitch:.2f}", (start_x, start_y + line_height), cv2.FONT_HERSHEY_SIMPLEX, font_scale, pitch_color, thickness)
+    cv2.putText(image, f"Roll: {roll:.2f}", (start_x, start_y + 2 * line_height), cv2.FONT_HERSHEY_SIMPLEX, font_scale, roll_color, thickness)
+
+    # Gambar status fokus
+    focus_color = (0, 255, 0) if is_focused else (0, 0, 255)
+    focus_text = "FOKUS" if is_focused else "TIDAK FOKUS"
+    cv2.putText(image, f"Status: {focus_text}", (start_x, start_y + 3 * line_height), cv2.FONT_HERSHEY_SIMPLEX, font_scale, focus_color, thickness)
 

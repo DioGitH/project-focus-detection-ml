@@ -11,7 +11,7 @@ import torch
 from torchvision import transforms
 
 from models import get_model, SCRFD
-from utils.general import compute_euler_angles_from_rotation_matrices, draw_cube, draw_axis, draw_fps
+from utils.general import compute_euler_angles_from_rotation_matrices, draw_cube, draw_axis, draw_fps, draw_info
 
 warnings.filterwarnings("ignore")
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
@@ -154,6 +154,13 @@ def main(params):
                     )
                 
                 prev_time= draw_fps(frame, prev_time)
+                
+                draw_info(
+                    frame,
+                    y_pred_deg,
+                    p_pred_deg,
+                    r_pred_deg,
+                )
 
             if params.view:
                 cv2.imshow('Demo', frame)
