@@ -1,7 +1,9 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 import { useEffect, useRef, useState, useImperativeHandle, forwardRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { toast } from "sonner"
+
 
 export type VideoQuizHandle = {
     startCamera: () => void;
@@ -142,4 +144,5 @@ const VideoQuiz = forwardRef<VideoQuizHandle, { username: string; onSummaryRecei
     );
 });
 
+VideoQuiz.displayName = 'VideoQuiz';
 export default VideoQuiz;

@@ -1,6 +1,8 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
+import Image from "next/image";
 
 export default function AdminPage() {
     const [streams, setStreams] = useState<{ [key: string]: { frame: string; focused: boolean; username:string } }>({});
@@ -90,7 +92,7 @@ export default function AdminPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                     {Object.entries(streams).map(([clientId, streamData]) => (
                         <div key={clientId} className="border rounded-lg shadow bg-white p-2">
-                            <img src={streamData.frame} alt={`User ${clientId}`} className="w-full h-auto rounded" />
+                            <Image src={streamData.frame} alt={`User ${clientId}`} className="w-full h-auto rounded" />
                             <p className="text-xs mt-1 text-gray-600">Username: {streamData.username}</p>
                             <p className={`text-xs mt-1 ${streamData.focused ? 'text-green-600' : 'text-red-600'}`}>
                                 {streamData.focused ? 'Focused' : 'Not Focused'}

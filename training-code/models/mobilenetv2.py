@@ -3,12 +3,10 @@ from torch import nn, Tensor
 from torchvision.models import MobileNet_V2_Weights
 
 from typing import Any,  List, Optional
-
 from utils.general import compute_rotation_matrix_from_ortho6d
 from models.common import _make_divisible, Conv2dNormActivation, load_filtered_state_dict
 
 __all__ = ["mobilenet_v2"]
-
 
 class InvertedResidual(nn.Module):
     def __init__(self, in_planes: int, out_planes: int, stride: int, expand_ratio: int) -> None:

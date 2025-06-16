@@ -1,9 +1,11 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 import { useEffect, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { UsernameForm } from './username-form';
 
 export default function VideoStream() {
+      
     const videoRef = useRef<HTMLVideoElement | null>(null);
     const processedFrameRef = useRef<HTMLImageElement | null>(null);
     const [angles, setAngles] = useState({ yaw: 0, pitch: 0, roll: 0 });
@@ -15,7 +17,7 @@ export default function VideoStream() {
     const [isConnected, setIsConnected] = useState(false);
     const [username, setUsername] = useState<string>("");
     const [isStopped, setIsStopped] = useState(false);
-    const [sessionSummary, setSessionSummary] = useState(null);
+    const [sessionSummary, setSessionSummary] = useState<any | null>(null);
 
     function socketUsersClient(){
         const socket = io(process.env.NEXT_PUBLIC_SOCKET_URL, {
@@ -196,7 +198,7 @@ export default function VideoStream() {
 
                                             <h4>Unfocused Timestamps:</h4>
                                             <ul>
-                                                {sessionSummary.unfocused_timestamps.map((item, index) => (
+                                                {sessionSummary.unfocused_timestamps.map((item:any, index:any) => (
                                                     <li key={index}>
                                                         Start: {new Date(item.start).toLocaleTimeString('en-US', { hour12: false })} |
                                                         End: {new Date(item.end).toLocaleTimeString('en-US', { hour12: false })} |
